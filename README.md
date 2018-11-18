@@ -50,3 +50,6 @@ This project is licensed under the Apache 2.0 License - see the [LICENSE.md](LIC
 
 This project has been inspired by
 * [Noisy](https://github.com/1tayH/noisy)
+
+These open source projects have been included for the convenience of users 
+* [collectlinks](https://github.com/jackdanger/collectlinks)
