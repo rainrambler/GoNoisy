@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math/big"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -47,7 +48,7 @@ func (p *Crawler) loadConfig() {
 		return
 	}
 
-	fmt.Printf("[%s]: INFO: Successfully opened config.json.\n", getCurTimeString())
+	fmt.Printf("[%s][INFO] Successfully opened config.json.\n", getCurTime())
 
 	defer jsonfile.Close()
 
@@ -61,8 +62,8 @@ func (p *Crawler) loadConfig() {
 }
 
 // return: response
-func (p *Crawler) request(url string) string {
-	res, err := http.Get(url)
+func (p *Crawler) request(url1 string) string {
+	res, err := http.Get(url1)
 
 	if err != nil {
 		return ""
@@ -71,7 +72,7 @@ func (p *Crawler) request(url string) string {
 	defer res.Body.Close()
 	body, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		fmt.Printf("WARN: Cannot parse: %s\n", url)
+		fmt.Printf("WARN: Cannot parse content in: [%s]\n", url1)
 		return ""
 	}
 
@@ -79,10 +80,11 @@ func (p *Crawler) request(url string) string {
 }
 
 // return: response
-func (p *Crawler) requestBody(url string) io.Reader {
-	res, err := http.Get(url)
-
+func (p *Crawler) requestBody(url1 string) io.Reader {
+	res, err := http.Get(url1)
 	if err != nil {
+		fmt.Printf("[%s][DBG] Cannot get response from %s.\n",
+			getCurTime(), url1)
 		return nil
 	}
 
@@ -90,7 +92,7 @@ func (p *Crawler) requestBody(url string) io.Reader {
 }
 
 // making url absolute
-func Normalize_link(url, rootUrl string) string {
+func Normalize_link_old(url, rootUrl string) string {
 	if strings.HasPrefix(url, "/") && !strings.HasPrefix(url, "//") {
 		return fmt.Sprint(rootUrl, url)
 	}
@@ -98,9 +100,11 @@ func Normalize_link(url, rootUrl string) string {
 }
 
 // if the URL contains some keywords configured in cfg file, then return ture
-func (p *Crawler) Is_Blacklisted(url string) bool {
+func (p *Crawler) Is_Blacklisted(url1 string) bool {
 	for _, blurl := range p.crawCfg.Blacklisted_urls {
-		if strings.Contains(url, blurl) {
+		if strings.Contains(url1, blurl) {
+			//fmt.Printf("[%s][DBG] URL: [%s] contains blacklisted [%s].\n",
+			//	getCurTime(), url1, blurl)
 			return true
 		}
 	}
@@ -109,8 +113,23 @@ func (p *Crawler) Is_Blacklisted(url string) bool {
 }
 
 // filters url if it is blacklisted or not valid, we put filtering logic here
-func (p *Crawler) Should_accept_url(url string) bool {
-	return (len(url) > 0) && IsValidUrl(url) && !p.Is_Blacklisted(url)
+func (p *Crawler) Should_accept_url(url1 string) bool {
+	if len(url1) == 0 {
+		return false
+	}
+
+	if !IsValidUrl(url1) {
+		//fmt.Printf("[%s][DBG] Invalid URL: %s.\n",
+		//	getCurTime(), url1)
+		return false
+	}
+
+	if p.Is_Blacklisted(url1) {
+		//fmt.Printf("[%s][DBG] Blacklist URL: %s.\n",
+		//	getCurTime(), url1)
+		return false
+	}
+	return true
 }
 
 // gathers links to be visited in the future from a web page's body.
@@ -123,8 +142,12 @@ func (p *Crawler) Extract_Urls(body io.Reader, rooturl string) map[string]bool {
 
 	urlarr := All(body)
 
-	for _, url := range urlarr {
-		urls[url] = true
+	for _, aurl := range urlarr {
+		absoluteUrl := normalize_link(aurl, rooturl)
+
+		if p.Should_accept_url(absoluteUrl) {
+			urls[absoluteUrl] = true
+		}
 	}
 
 	return urls
@@ -151,26 +174,26 @@ a dead end has reached or when we ran out of links
 func (p *Crawler) Browse_from_links(depth int) {
 	if len(p.links) == 0 {
 		fmt.Printf("[%s]: Hit a dead end, moving to the next root URL.\n",
-			getCurTimeString())
+			getCurTime())
 		return
 	}
 
 	is_dead_reached := depth > p.crawCfg.Max_depth
 	if is_dead_reached {
 		fmt.Printf("[%s]: Hit a dead end for depth, moving to the next root URL.\n",
-			getCurTimeString())
+			getCurTime())
 		return
 	}
 
 	// timeout
 	if p.is_Timeout_reached() {
-		fmt.Println("[%s]: Timeout has exceeded, exiting...\n", getCurTimeString())
+		fmt.Printf("[%s]: Timeout has exceeded, exiting...\n", getCurTime())
 		return
 	}
 
 	random_link := p.choiseRandomLink()
 
-	fmt.Printf("[%s]: Visiting %s\n", getCurTimeString(), random_link)
+	fmt.Printf("[%s]: Visiting %s\n", getCurTime(), random_link)
 
 	subpage := p.requestBody(random_link)
 
@@ -215,7 +238,7 @@ func (p *Crawler) Crawl() {
 
 		body := p.requestBody(url)
 		p.links = p.Extract_Urls(body, url)
-		fmt.Printf("[%s]: found %d links\n", getCurTimeString(), len(p.links))
+		fmt.Printf("[%s]: found %d links\n", getCurTime(), len(p.links))
 
 		p.Browse_from_links(0)
 	}
@@ -257,9 +280,58 @@ func (p *Crawler) removeVisitedLink(url string) {
 	delete(p.links, url)
 }
 
+/*
+Normalizes links extracted from the DOM by making them all absolute, so
+we can request them, for example, turns a "/images" link extracted from https://imgur.com
+to "https://imgur.com/images"
+:param link: link found in the DOM
+:param root_url: the URL the DOM was loaded from
+:return: absolute link
+*/
 func normalize_link(link, root_url string) string {
-	// TODO normalize
-	return ""
+	linknew := removeWhiteSpaceNewLine(link)
+	u1, err := url.Parse(linknew)
+	if err != nil {
+		fmt.Printf("[%s][DBG] Cannot parse URL: [%s]!\n",
+			getCurTime(), linknew)
+		return linknew
+	}
+
+	base, err := url.Parse(root_url)
+	if err != nil {
+		fmt.Printf("[%s][DBG] Cannot parse Base URL: %s!\n",
+			getCurTime(), root_url)
+		return linknew
+	}
+
+	// https://stackoverflow.com/questions/34668012/combine-url-paths-with-path-join
+	fullUrl := base.ResolveReference(u1).String()
+	//fmt.Printf("[%s][DBG] Joint URL: [%s].\n", getCurTime(), fullUrl)
+
+	return removeWhiteSpaceNewLine(fullUrl)
+}
+
+func removeWhiteSpace(s string) string {
+	if strings.Contains(s, " ") {
+		snew := strings.Replace(s, " ", "", -1)
+		return snew
+	} else {
+		return s
+	}
+}
+
+func removeWhiteSpaceNewLine(s string) string {
+	snew := s
+	if strings.Contains(snew, " ") {
+		snew = strings.Replace(snew, " ", "", -1)
+	}
+	if strings.Contains(snew, "\t") {
+		snew = strings.Replace(snew, "\t", "", -1)
+	}
+	if strings.Contains(snew, "\n") {
+		snew = strings.Replace(snew, "\n", "", -1)
+	}
+	return snew
 }
 
 func IsValidUrl(str1 string) bool {
@@ -289,6 +361,7 @@ func GetUrlValidator() *UrlValidator {
 	return instance
 }
 
-func getCurTimeString() string {
-	return time.Now().Format("2006-01-02 15:04:05")
+func getCurTime() string {
+	//return time.Now().Format("2006-02-02 15:05:05")
+	return time.Now().Format(time.RFC1123)
 }
