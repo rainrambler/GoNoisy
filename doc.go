@@ -81,7 +81,12 @@ func (p *Crawler) request(url1 string) string {
 
 // return: response
 func (p *Crawler) requestBody(url1 string) io.Reader {
-	res, err := http.Get(url1)
+	// https://stackoverflow.com/questions/16895294/how-to-set-timeout-for-http-get-requests-in-golang
+	client := http.Client{
+		Timeout: 5 * time.Second,
+	}
+	res, err := client.Get(url1)
+	//res, err := http.Get(url1)
 	if err != nil {
 		fmt.Printf("[%s][DBG] Cannot get response from %s.\n",
 			getCurTime(), url1)
@@ -258,7 +263,7 @@ func (p *Crawler) SleepRandom() {
 	}
 	i := CryptRandom(p.crawCfg.Min_sleep, p.crawCfg.Max_sleep)
 
-	sleepduration := time.Duration(i) * time.Second
+	sleepduration := time.Duration(i) * time.Millisecond
 	time.Sleep(sleepduration)
 }
 
