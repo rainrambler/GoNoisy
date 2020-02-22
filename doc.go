@@ -15,6 +15,10 @@ import (
 	"time"
 )
 
+const (
+	TimeOutSeconds = 10 // the specified timeout
+)
+
 type CrawConfig struct {
 	Max_depth        int      `json:"max_depth"`
 	Min_sleep        int      `json:"min_sleep"`
@@ -43,7 +47,7 @@ func (p *Crawler) loadConfig() {
 		return
 	}
 
-	fmt.Println("INFO: Successfully opened config.json.")
+	fmt.Printf("[%s]: INFO: Successfully opened config.json.\n", getCurTimeString())
 
 	defer jsonfile.Close()
 
@@ -146,21 +150,27 @@ a dead end has reached or when we ran out of links
 */
 func (p *Crawler) Browse_from_links(depth int) {
 	if len(p.links) == 0 {
-		fmt.Println("Hit a dead end, moving to the next root URL")
+		fmt.Printf("[%s]: Hit a dead end, moving to the next root URL.\n",
+			getCurTimeString())
 		return
 	}
 
 	is_dead_reached := depth > p.crawCfg.Max_depth
 	if is_dead_reached {
-		fmt.Println("Hit a dead end for depth, moving to the next root URL")
+		fmt.Printf("[%s]: Hit a dead end for depth, moving to the next root URL.\n",
+			getCurTimeString())
 		return
 	}
 
-	// TODO timeout
+	// timeout
+	if p.is_Timeout_reached() {
+		fmt.Println("[%s]: Timeout has exceeded, exiting...\n", getCurTimeString())
+		return
+	}
 
 	random_link := p.choiseRandomLink()
 
-	fmt.Printf("Visiting %s\n", random_link)
+	fmt.Printf("[%s]: Visiting %s\n", getCurTimeString(), random_link)
 
 	subpage := p.requestBody(random_link)
 
@@ -180,10 +190,18 @@ func (p *Crawler) Browse_from_links(depth int) {
 	p.Browse_from_links(depth + 1)
 }
 
+// Determines whether the specified timeout has reached, if no timeout
+// is specified then return false
+// return: indicating whether the timeout has reached
 func (p *Crawler) is_Timeout_reached() bool {
-	// TODO timeout reached
+	if !p.crawCfg.Timeout {
+		return false
+	}
 
-	return false
+	curTime := time.Now()
+	endTime := p.start_time.Add(TimeOutSeconds * time.Second)
+	is_timed_out := curTime.After(endTime)
+	return is_timed_out
 }
 
 //  Collects links from our root urls, stores them and then calls
@@ -197,7 +215,7 @@ func (p *Crawler) Crawl() {
 
 		body := p.requestBody(url)
 		p.links = p.Extract_Urls(body, url)
-		fmt.Printf("found %d links", len(p.links))
+		fmt.Printf("[%s]: found %d links\n", getCurTimeString(), len(p.links))
 
 		p.Browse_from_links(0)
 	}
@@ -222,7 +240,6 @@ func (p *Crawler) SleepRandom() {
 }
 
 func (p *Crawler) choiseRandomLink() string {
-
 	i := CryptRandom(0, len(p.links))
 
 	// stackoverflow: get an arbitrary key item from a map
@@ -238,6 +255,11 @@ func (p *Crawler) choiseRandomLink() string {
 
 func (p *Crawler) removeVisitedLink(url string) {
 	delete(p.links, url)
+}
+
+func normalize_link(link, root_url string) string {
+	// TODO normalize
+	return ""
 }
 
 func IsValidUrl(str1 string) bool {
@@ -265,4 +287,8 @@ func GetUrlValidator() *UrlValidator {
 	})
 
 	return instance
+}
+
+func getCurTimeString() string {
+	return time.Now().Format("2006-01-02 15:04:05")
 }
