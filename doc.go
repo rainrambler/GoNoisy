@@ -61,21 +61,39 @@ func (p *Crawler) loadConfig() {
 	json.Unmarshal([]byte(byteVal), p.crawCfg)
 }
 
+func (p *Crawler) getRandomAgent() string {
+	totalcount := len(p.crawCfg.User_agents)
+	randval := CryptRandom(0, totalcount-1)
+
+	return p.crawCfg.User_agents[randval]
+}
+
 // return: response
 func (p *Crawler) requestBody(url1 string) io.Reader {
 	// https://stackoverflow.com/questions/16895294/how-to-set-timeout-for-http-get-requests-in-golang
 	client := http.Client{
 		Timeout: 5 * time.Second,
 	}
-	res, err := client.Get(url1)
-	//res, err := http.Get(url1)
+
+	req, err := http.NewRequest("GET", url1, nil)
+	if err != nil {
+		fmt.Printf("[%s][DBG] Cannot create req from %s.\n",
+			getCurTime(), url1)
+		return nil
+	}
+
+	randAgent := p.getRandomAgent()
+	req.Header.Set("User-Agent", randAgent)
+	//fmt.Printf("[%s][DBG] Agent: [%s].\n",
+	//	getCurTime(), randAgent)
+	resp, err := client.Do(req)
 	if err != nil {
 		fmt.Printf("[%s][DBG] Cannot get response from %s.\n",
 			getCurTime(), url1)
 		return nil
 	}
 
-	return res.Body
+	return resp.Body
 }
 
 // if the URL contains some keywords configured in cfg file, then return ture
