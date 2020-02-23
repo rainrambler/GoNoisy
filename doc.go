@@ -41,7 +41,7 @@ func (p *Crawler) loadConfig() {
 	p.links = make(map[string]bool)
 
 	// open json file
-	jsonfile, err := os.Open("config.json")
+	jsonfile, err := os.Open("config_cn.json")
 
 	if err != nil {
 		fmt.Println(err)
@@ -62,24 +62,6 @@ func (p *Crawler) loadConfig() {
 }
 
 // return: response
-func (p *Crawler) request(url1 string) string {
-	res, err := http.Get(url1)
-
-	if err != nil {
-		return ""
-	}
-
-	defer res.Body.Close()
-	body, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		fmt.Printf("WARN: Cannot parse content in: [%s]\n", url1)
-		return ""
-	}
-
-	return string(body)
-}
-
-// return: response
 func (p *Crawler) requestBody(url1 string) io.Reader {
 	// https://stackoverflow.com/questions/16895294/how-to-set-timeout-for-http-get-requests-in-golang
 	client := http.Client{
@@ -94,14 +76,6 @@ func (p *Crawler) requestBody(url1 string) io.Reader {
 	}
 
 	return res.Body
-}
-
-// making url absolute
-func Normalize_link_old(url, rootUrl string) string {
-	if strings.HasPrefix(url, "/") && !strings.HasPrefix(url, "//") {
-		return fmt.Sprint(rootUrl, url)
-	}
-	return url
 }
 
 // if the URL contains some keywords configured in cfg file, then return ture
